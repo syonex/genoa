@@ -1,0 +1,241 @@
+#!/bin/sh
+
+# generic notification author/arranger/artist
+# John Sellens software@syonex.com
+
+tstandard="/usr/local/share/genoa/templates/standard"
+tpager="/usr/local/share/genoa/templates/pager"
+tdir="$tstandard"
+# tdir="templates"
+
+PATH="/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin"
+export PATH
+umask 022
+
+myname=`basename "$0"`
+tmpawk="/tmp/$myname.awk.$$"
+tmpenv="/tmp/$myname.env.$$"
+tmpout="/tmp/$myname.out.$$"
+rm -rf "$tmpawk" "$tmpenv" "$tmpout"
+trap "rm -rf '$tmpawk' '$tmpenv' '$tmpout'" EXIT
+
+verbose=true
+# verbose=false
+
+# I don't know that nagios is giving me what I expect
+# for a service acknowledgement
+# printenv | logger -t "$myname" -i
+# exit 1
+
+err=0
+
+fyi() {
+    logger -t "$myname" -i -- "$$" "FYI:" "$@"
+    $verbose && echo "$myname: FYI:" "$@"
+}
+
+error() {
+    logger -t "$myname" -i -- "$$" "$@"
+    echo 1>&2 "$myname:" "$@"
+    err=1
+}
+
+fatal() {
+    error "$@"
+    # some OS's don't let you remove the current directory (AIX?)
+    cd /
+    exit 1
+}
+
+usage() {
+    fatal "usage: $myname [-p] [-s] [-t]"
+}
+
+# Do they want to override the default template directory?
+if [ ! -z "$GENOATEMPLATEDIR" ]; then
+    if [ -d "$GENOATEMPLATEDIR" ]; then
+	tdir="$GENOATEMPLATEDIR"
+    else
+	error "ignoring GENOATEMPLATEDIR because it is not a directory: $GENOATEMPLATEDIR"
+    fi
+fi
+
+fyi invoked with "$@"
+
+spewcmd="cat"
+spewargs=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+	--)
+	    shift
+	    break
+	    ;;
+	-p)
+	    tdir="$tpager"
+	    ;;
+	-s)
+	    # spew="sendmail -t"
+	    fyi the -s option says spew to sendmail -t
+	    spewcmd="sendmail"
+	    spewargs="-t"
+	    ;;
+	-t)
+	    # spew="tellitto $NAGIOS_CONTACTPAGER"
+	    fyi the -t option says spew to tellitto "$NAGIOS_CONTACTPAGER"
+	    spewcmd="tellitto"
+	    spewargs="$NAGIOS_CONTACTPAGER"
+	    ;;
+	-*)
+	    error unexpected option "$1"
+	    usage
+	    ;;
+	*)
+	    break
+	    ;;
+    esac
+    shift
+done
+
+if [ $# -ne 0 ]; then
+    usage
+fi
+
+# See if we have a specific template to use.
+# Look in order until we find a file.
+
+# Is it a host notification or a service notification?
+# I was going to check HOSTNOTIFICATIONID but it can be
+# set even if it's a service notification, but the NUMBER
+# variables seem to be 0 appropriately.
+
+# This seems to be more complicated than one might like. It looks like
+# a HOST ACK has HOSTNOTIFICATIONID set but HOSTNOTIFICATIONNUMBER = 0,
+# and no SERVICENOTIFICATIONID and no SERVICENOTIFICATIONNUMBER.
+
+# But WAIT it's possible for HOSTNOTIFICATIONID and SERVICENOTIFICATIONID
+# to be set and HOSTNOTIFICATIONNUMBER SERVICENOTIFICATIONNUMBER and
+# NOTIFICATIONNUMBER to all be 0. I think perhaps the NOTIFICATIONNUMBERs
+# are how many have already been sent, including this one, and if this
+# is an ACK, can all be 0.
+
+
+if [ "$NAGIOS_HOSTNOTIFICATIONID" != "" \
+    -a "$NAGIOS_SERVICENOTIFICATIONID" = "" \
+    ]; then
+    ntype="HOST"
+elif [ "$NAGIOS_HOSTNOTIFICATIONID" = "" \
+    -a "$NAGIOS_SERVICENOTIFICATIONID" != "" \
+    ]; then
+    ntype="SERVICE"
+elif [ ! -z "$NAGIOS_SERVICEACKCOMMENT" \
+    -o ! -z "$NAGIOS_SERVICEACKAUTHORNAME" \
+    ]; then
+    ntype="SERVICE"
+elif [ ! -z "$NAGIOS_HOSTACKCOMMENT" \
+    -o ! -z "$NAGIOS_HOSTACKAUTHORNAME" \
+    ]; then
+    ntype="HOST"
+elif [ ! -z "$NAGIOS_HOSTNOTIFICATIONNUMBER" \
+    -a "$NAGIOS_HOSTNOTIFICATIONNUMBER" != "0" \
+    ]; then
+    ntype="HOST"
+elif [ ! -z "$NAGIOS_SERVICENOTIFICATIONNUMBER" \
+    -a "$NAGIOS_SERVICENOTIFICATIONNUMBER" != "0" \
+    ]; then
+    ntype="SERVICE"
+else
+    ntype="UNKNOWN"
+fi
+
+fyi ntype is $ntype hostid $NAGIOS_HOSTNOTIFICATIONID serviceid $NAGIOS_SERVICENOTIFICATIONID
+fyi ntype is $ntype hostnumber $NAGIOS_HOSTNOTIFICATIONNUMBER servicenumber $NAGIOS_SERVICENOTIFICATIONNUMBER
+
+template=""
+keeplooking=true
+lookhere () {
+    case "$1" in
+	/*)
+	    top=""
+	    ;;
+	*)
+	    top="$tdir/"
+	    ;;
+    esac
+    for f in \
+	"$1/${ntype}_$NAGIOS_NOTIFICATIONTYPE" \
+	"$1/${ntype}" \
+	"$1/$NAGIOS_NOTIFICATIONTYPE" \
+	"$1/default" \
+	; do
+	template="${top}${f}"
+	# fyi checking for template "$template"
+	if [ -f "$template" -a -r "$template" ]; then
+	    fyi found template "$template"
+	    keeplooking=false
+	    break
+	fi
+    done
+}
+
+# Is there a particular template they want?
+if [ ! -z "$GENOATEMPLATE" -a -f "$GENOATEMPLATE" ]; then
+    template="$GENOATEMPLATE"
+    keeplooking=false
+fi
+
+# Is there a set of templates for the host?
+$keeplooking && lookhere "$NAGIOS_HOSTNAME"
+$keeplooking && lookhere "$NAGIOS_HOSTADDRESS"
+
+# Is there a class they set?
+$keeplooking && test ! -z "$NAGIOS__HOSTGENOACLASS" \
+    && lookhere "$NAGIOS__HOSTGENOACLASS"
+
+# Otherwise look for defaults
+$keeplooking && lookhere "."
+
+
+if [ ! -f "$template" -o ! -r "$template" ]; then
+    fatal template file missing or unreadable: "$template"
+fi
+fyi using template "$template"
+
+# Put the name of the chosen template into the environment so it
+# can be included in templates if desired
+export NAGIOS_GENOATEMPLATE="$template"
+
+# Make the awk program based on any NAGIOS_ values in the environment.
+# Not real good about checking for errors here.
+# Could make an array of variables/stings and loop trough it, but this
+# is just as easy.
+# We could also include something here to remove any /^#/ comment lines.
+printenv > "$tmpenv"
+if [ $? -ne 0 ]; then
+    fatal "printenv into $tmpenv failed"
+fi
+awk < "$tmpenv"  >"$tmpawk" '
+    BEGIN { FS="="; print "{"; }
+    /^NAGIOS_/ {
+	sub( /^NAGIOS_/, "", $1 );
+	printf "gsub( /\\$%s\\$/, ENVIRON[\"NAGIOS_%s\"] );\n", $1, $1;
+    }
+    END { print "print;"; print "}"; }
+    '
+if [ $? -ne 0 ]; then
+    fatal "printenv from $tmpenv into $tmpawk failed"
+fi
+
+# send template through awk
+awk -f "$tmpawk" "$template" > "$tmpout"
+if [ $? -ne 0 ]; then
+    fatal awk processing of template failed
+fi
+
+fyi spewing to $spewcmd $spewargs
+# and spew the output
+$spewcmd $spewargs < "$tmpout"
+if [ $? -ne 0 ]; then
+    fatal spew processing of output failed: $spewcmd $spewargs
+fi
+
+exit $err

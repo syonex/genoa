@@ -1,0 +1,93 @@
+.TH GENOA 8
+.SH NAME
+genoa \- generic notification author/arranger/artist
+.SH SYNOPSIS
+.B genoa
+.RI [ -p ]
+.RI [ -s ]
+.RI [ -t ]
+.SH DESCRIPTION
+Still to come in appropriate detail.
+.IP "-p"
+Use the template directory for "pager" notifications.
+Equivalent to setting the environment variable
+.B GENOATEMPLATEDIR
+to /usr/local/share/genoa/templates/pager.
+.IP "-s"
+Send the output through "sendmail -t".
+.IP "-t"
+Send the output through "tellitto $NAGIOS_CONTACTPAGER".
+You likely want to use
+.I -p
+along with this option.
+.SH "TEMPLATE SEARCHING"
+This needs more explanation.
+.B genoa
+looks for a template to use in sub-directories
+of the template directory (if they exist)
+based on the value of these environment variable:
+.nf
+    NAGIOS_HOSTNAME
+    NAGIOS_HOSTADDRESS
+    NAGIOS__HOSTGENOACLASS
+.fi
+before searching the template directory itself,
+and uses the first template file it finds.
+.PP
+When searching a directory,
+.B genoa
+determines
+whether the notification is for a HOST or a SERVICE
+check (the TYPE), and looks for files named (in order):
+.nf
+    TYPE_$NAGIOS_NOTIFICATIONTYPE
+    TYPE
+    $NAGIOS_NOTIFICATIONTYPE
+    default
+.fi
+$NAGIOS_NOTIFICATIONTYPE
+.SH ENVIRONMENT
+.B genoa
+assumes that Nagios is configured to
+set everything in the environment
+i.e. nagios.cfg has
+.nf
+    enable_environment_macros=1
+.fi
+set.
+.PP
+If you don't set enable_environment_macros, you can simulate
+that with the variables you want to use in your templates by
+wrapping the invocation of
+.B genoa
+with the
+.IR env (1)
+command in the notication command definition.
+But that makes
+.B genoa
+less cool.
+.IP GENOATEMPLATE
+Specifies a file to use for the template.
+.IP GENOATEMPLATEDIR
+Where to look for template files, defaults to
+/usr/local/share/genoa/templates/standard.
+.SH NOTES
+I could imagine that it might be useful to be able to use a
+more general purpose templating language e.g.
+perhaps a
+.I -m
+option could run the output through
+.IR m4 (1)
+or something like that.
+.PP
+It might also be useful to allow comment lines in a template
+that get removed in the template processing, so you can leave
+notes about why you're doing things in a particular way.
+.SH "SEE ALSO"
+.IR tellitto (8)
+.SH BUGS
+Perhaps
+.SH AUTHOR
+John Sellens, software@syonex.com
+.br
+while at FreshBooks www.freshbooks.com

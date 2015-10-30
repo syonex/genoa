@@ -1,0 +1,48 @@
+Subject: $NOTIFICATIONTYPE$ alert $NOTIFICATIONNUMBER$ - $HOSTNAME$/$SERVICEDESC$ is $SERVICESTATE$
+To: $CONTACTEMAIL$
+
+this is your notification from the default template
+this should not ever be used
+
+
+$NOTIFICATIONTYPE$:$HOSTSTATE$:$HOSTNAME$ $SHORTDATETIME$ $HOSTOUTPUT$ $SHORTDATETIME$
+for $CONTACTPAGER$
+
+
+***** Nagios *****
+
+Notification Type: $NOTIFICATIONTYPE$
+Host: $HOSTALIAS$
+State: $HOSTSTATE$ for $HOSTDURATION$
+Address: $HOSTADDRESS$
+Info:
+
+$HOSTOUTPUT$
+
+Date/Time: $LONGDATETIME$
+
+ACK by: $HOSTACKAUTHOR$
+Comment: $HOSTACKCOMMENT$
+" | /usr/bin/Mail -s "** $NOTIFICATIONTYPE$ alert $NOTIFICATIONNUMBER$ - $HOSTALIAS$ host is $HOSTSTATE$ **" $CONTACTEMAIL$
+
+
+
+
+***** Nagios  *****
+
+Notification Type: $NOTIFICATIONTYPE$
+
+Service: $SERVICEDESC$
+Host: $HOSTALIAS$
+State: $SERVICESTATE$ for $SERVICEDURATION$
+Address: $HOSTADDRESS$
+
+Info:
+
+$SERVICEOUTPUT$
+
+Date/Time: $LONGDATETIME$
+
+ACK by: $SERVICEACKAUTHOR$
+Comment: $SERVICEACKCOMMENT$
+" | /usr/bin/Mail -s "** $NOTIFICATIONTYPE$ alert $NOTIFICATIONNUMBER$ - $HOSTNAME$/$SERVICEDESC$ is $SERVICESTATE$ **" $CONTACTEMAIL$
